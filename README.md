@@ -1,5 +1,7 @@
 # Artemis Android
 
+A fork of Artemis to include support for Abmilight/screen capture
+
 Previously named Moonlight Noir
 
 An open source client for [Apollo](https://github.com/ClassicOldSong/Apollo)/[Sunshine](https://github.com/LizardByte/Sunshine).
