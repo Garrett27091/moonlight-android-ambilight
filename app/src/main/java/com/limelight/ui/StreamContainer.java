@@ -8,6 +8,11 @@ import android.view.KeyEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+
+//added TextureView
+import android.graphics.SurfaceTexture;
+import android.view.TextureView;
+
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
@@ -44,6 +49,7 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
     private Stereo3DRenderer mStereoRenderer;
 
     private SurfaceView mSurfaceView;
+    private TextureView mTextureView; //added
     private Surface mCurrentSurface;
     private Runnable onSurfaceAvailable;
     private StreamMode renderMode = null;
@@ -80,19 +86,49 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         LayoutParams childParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
 
         // Always craete a surface view as a Workaround for the sizing issue of GLSurfaceView
+        if (renderMode == StreamMode.MODE_2D) {
+        mTextureView = new TextureView(context);
+        mTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            @Override
+            public void onSurfaceTextureAvailable(SurfaceTexture st, int width, int height) {
+                mCurrentSurface = new Surface(st);
+                notifySurfaceReady();
+                game.surfaceCreated(null);
+                game.surfaceChanged(null, PixelFormat.RGBA_8888, width, height);
+            }
+
+            @Override
+            public void onSurfaceTextureSizeChanged(SurfaceTexture st, int width, int height) {
+                game.surfaceChanged(null, PixelFormat.RGBA_8888, width, height);
+            }
+    
+            @Override
+            public boolean onSurfaceTextureDestroyed(SurfaceTexture st) {
+                isSurfaceReady = false;
+                mCurrentSurface = null;
+                game.surfaceDestroyed(null);
+                return true;
+            }
+    
+            @Override
+            public void onSurfaceTextureUpdated(SurfaceTexture st) {
+                // Called every frame — no action needed; UAL captures via MediaProjection
+            }
+        });
+        addView(mTextureView, childParams);
+    } else {
+        // 3D path: keep the original SurfaceView workaround + GLSurfaceView stack
         mSurfaceView = new SurfaceView(context);
         addView(mSurfaceView, childParams);
-
-        if (renderMode != StreamMode.MODE_2D) {
-            GLSurfaceView glSurfaceView = new GLSurfaceView(context);
-            glSurfaceView.setEGLContextClientVersion(3);
-            mStereoRenderer = new Stereo3DRenderer(glSurfaceView, this, context, prefConfig);
-            glSurfaceView.setRenderer(mStereoRenderer);
-            glSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
-            mSurfaceView = glSurfaceView;
-            addView(mSurfaceView, childParams);
-        }
-
+    
+        GLSurfaceView glSurfaceView = new GLSurfaceView(context);
+        glSurfaceView.setEGLContextClientVersion(3);
+        mStereoRenderer = new Stereo3DRenderer(glSurfaceView, this, context, prefConfig);
+        glSurfaceView.setRenderer(mStereoRenderer);
+        glSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+        mSurfaceView = glSurfaceView;
+        addView(mSurfaceView, childParams);
+    
         mSurfaceView.getHolder().addCallback(this);
         if (mSurfaceView.getHolder().getSurface() != null && mSurfaceView.getHolder().getSurface().isValid()) {
             surfaceChanged(mSurfaceView.getHolder(), PixelFormat.RGBA_8888, mSurfaceView.getWidth(), mSurfaceView.getHeight());
@@ -216,6 +252,10 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         return mSurfaceView;
     }
 
+    public TextureView getTextureView() {
+        return mTextureView;
+    }
+
     public StreamMode mapIntToStreamMode(int modeIndex) {
         StreamContainer.StreamMode[] modes = StreamContainer.StreamMode.values();
         if (modeIndex >= 0 && modeIndex < modes.length) {
@@ -263,6 +303,31 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
             mCurrentSurface = surface;
             notifySurfaceReady();
         }
+    }
+
+    @Override
+    public void surfaceCreated(SurfaceHolder holder) {
+        // Only reached in 3D mode now
+        game.surfaceCreated(holder);
+    }
+    
+    @Override
+    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        // Only reached in 3D mode now — 2D is handled in the TextureView listener above
+        if (renderMode != StreamMode.MODE_2D && width > 0 && height > 0) {
+            mCurrentSurface = holder.getSurface();
+            notifySurfaceReady();
+        }
+        game.surfaceChanged(holder, format, width, height);
+    }
+    
+    @Override
+    public void surfaceDestroyed(SurfaceHolder holder) {
+        // Only reached in 3D mode now
+        if (mStereoRenderer != null) {
+            mStereoRenderer.onSurfaceDestroyed();
+        }
+        game.surfaceDestroyed(holder);
     }
 
     public void onDestroy() {
